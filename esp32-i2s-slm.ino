@@ -95,6 +95,12 @@ const float ICS43434_B[] = {0.47733, -0.48649, -0.33646, 0.23462, 0.11102};
 const float ICS43434_A[] = {1.0, -1.9307338, 0.8651946, 0.0644284, 0.0011125};
 IIRFilter ICS43434(ICS43434_B, ICS43434_A);
 
+// TDK/InvenSense ICS-43432
+// Datasheet: https://www.invensense.com/wp-content/uploads/2015/02/ICS-43432-data-sheet-v1.3.pdf
+const float ICS43432_B[] = {-0.457337, 1.1222867, -0.77818279, 0.0096893, 0.1034567};
+const float ICS43432_A[] = {1,-3.3420781, 4.4033694, -3.0167073, 1.2265537, -0.2962229, 0.0251086};
+IIRFilter ICS43432(ICS43432_B, ICS43432_A);
+
 // TDK/InvenSense INMP441
 // Datasheet: https://www.invensense.com/wp-content/uploads/2015/02/INMP441.pdf
 const float INMP441_B[] = {1.00198, -1.99085, 0.98892};

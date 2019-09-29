@@ -91,34 +91,34 @@
 
 // TDK/InvenSense ICS-43434
 // Datasheet: https://www.invensense.com/wp-content/uploads/2016/02/DS-000069-ICS-43434-v1.1.pdf
-const float ICS43434_B[] = {0.47733, -0.48649, -0.33646, 0.23462, 0.11102};
-const float ICS43434_A[] = {1.0, -1.9307338, 0.8651946, 0.0644284, 0.0011125};
-IIRFilter ICS43434(ICS43434_B, ICS43434_A);
+const double ICS43434_B[] = {0.47733, -0.48649, -0.33646, 0.23462, 0.11102};
+const double ICS43434_A[] = {1.0, -1.9307338, 0.8651946, 0.0644284, 0.0011125};
+IIR_FILTER ICS43434(ICS43434_B, ICS43434_A);
 
 // TDK/InvenSense ICS-43432
 // Datasheet: https://www.invensense.com/wp-content/uploads/2015/02/ICS-43432-data-sheet-v1.3.pdf
-const float ICS43432_B[] = {-0.457337, 1.1222867, -0.77818279, 0.0096893, 0.1034567};
-const float ICS43432_A[] = {1,-3.3420781, 4.4033694, -3.0167073, 1.2265537, -0.2962229, 0.0251086};
-IIRFilter ICS43432(ICS43432_B, ICS43432_A);
+const double ICS43432_B[] = {-0.457337, 1.1222867, -0.77818279, 0.0096893, 0.1034567};
+const double ICS43432_A[] = {1,-3.3420781, 4.4033694, -3.0167073, 1.2265537, -0.2962229, 0.0251086};
+IIR_FILTER ICS43432(ICS43432_B, ICS43432_A);
 
 // TDK/InvenSense INMP441
 // Datasheet: https://www.invensense.com/wp-content/uploads/2015/02/INMP441.pdf
-const float INMP441_B[] = {1.00198, -1.99085, 0.98892};
-const float INMP441_A[] = {1.0, -1.99518, 0.99518};
-IIRFilter INMP441(INMP441_B, INMP441_A);
+const double INMP441_B[] = {1.00198, -1.99085, 0.98892};
+const double INMP441_A[] = {1.0, -1.99518, 0.99518};
+IIR_FILTER INMP441(INMP441_B, INMP441_A);
 
 //
 // A-weighting 6th order IIR Filter, Fs = 48KHz 
 // (By Dr. Matt L., Source: https://dsp.stackexchange.com/a/36122)
 //
-const float A_weighting_B[] = {0.169994948147430, 0.280415310498794, -1.120574766348363, 0.131562559965936, 0.974153561246036, -0.282740857326553, -0.152810756202003};
-const float A_weighting_A[] = {1.0, -2.12979364760736134, 0.42996125885751674, 1.62132698199721426, -0.96669962900852902, 0.00121015844426781, 0.04400300696788968};
-IIRFilter A_weighting(A_weighting_B, A_weighting_A);
+const double A_weighting_B[] = {0.169994948147430, 0.280415310498794, -1.120574766348363, 0.131562559965936, 0.974153561246036, -0.282740857326553, -0.152810756202003};
+const double A_weighting_A[] = {1.0, -2.12979364760736134, 0.42996125885751674, 1.62132698199721426, -0.96669962900852902, 0.00121015844426781, 0.04400300696788968};
+IIR_FILTER A_weighting(A_weighting_B, A_weighting_A);
 
 // No filter, class to disable equalizer or weighting
 class NoFilter {
   public:
-    inline float filter(float value) { return value; };
+    inline IIR_BASE_T filter(IIR_BASE_T value) { return value; };
 };
 NoFilter None;
 
@@ -132,11 +132,11 @@ NoFilter None;
 #endif
 
 // Data we push to 'samples_queue'
-struct samples_sum_t {
+struct samples_queue_t {
   // Sum of squares of mic samples, after Equalizer filter
-  float sum_sqr_SPL;
+  IIR_ACCU_T sum_sqr_SPL;
   // Sum of squares of weighted mic samples
-  float sum_sqr_weighted;
+  IIR_ACCU_T sum_sqr_weighted;
 };
 int32_t samples[SAMPLES_SHORT];
 QueueHandle_t samples_queue;
@@ -150,11 +150,13 @@ QueueHandle_t samples_queue;
 
 void mic_i2s_init() {
   // Setup I2S to sample mono channel for SAMPLE_RATE * SAMPLE_BITS
+  // NOTE: Recent update to Arduino_esp32 (1.0.2 -> 1.0.3)
+  //       seems to have swapped ONLY_LEFT and ONLY_RIGHT channels
   const i2s_config_t i2s_config = {
     .mode = i2s_mode_t(I2S_MODE_MASTER | I2S_MODE_RX),
     .sample_rate = SAMPLE_RATE,
     .bits_per_sample = i2s_bits_per_sample_t(SAMPLE_BITS),
-    .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,
+    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
     .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
     .dma_buf_count = DMA_BANKS,
@@ -194,27 +196,28 @@ void mic_i2s_reader_task(void* parameter) {
 
   // Discard first block, microphone may have startup time (i.e. INMP441 up to 83ms)
   size_t bytes_read = 0;
-  i2s_read(I2S_NUM_0, &samples, SAMPLES_SHORT * sizeof(int32_t), &bytes_read, portMAX_DELAY);
+  i2s_read(I2S_PORT, &samples, SAMPLES_SHORT * sizeof(int32_t), &bytes_read, portMAX_DELAY);
 
   while (true) {
-    float sum_sqr_SPL = 0;
-    float sum_sqr_weighted = 0;
+    IIR_ACCU_T sum_sqr_SPL = 0;
+    IIR_ACCU_T sum_sqr_weighted = 0;
+    samples_queue_t q;
     int32_t sample;
-    samples_sum_t ss;
-    float s = 0;
+    IIR_BASE_T s;
 
-    i2s_read(I2S_NUM_0, &samples, SAMPLES_SHORT * sizeof(int32_t), &bytes_read, portMAX_DELAY);
+    i2s_read(I2S_PORT, &samples, SAMPLES_SHORT * sizeof(int32_t), &bytes_read, portMAX_DELAY);
     for(int i=0; i<SAMPLES_SHORT; i++) {
       sample = SAMPLE_CONVERT(samples[i]);
-      s = MIC_EQUALIZER.filter(sample);
-      sum_sqr_SPL += (s * s);
+      s = sample;
+      s = MIC_EQUALIZER.filter(s);
+      ACCU_SQR(sum_sqr_SPL, s);
       s = WEIGHTING.filter(s);
-      sum_sqr_weighted += (s * s);
+      ACCU_SQR(sum_sqr_weighted, s);
     }
 
-    ss.sum_sqr_SPL = sum_sqr_SPL;
-    ss.sum_sqr_weighted = sum_sqr_weighted;
-    xQueueSend(samples_queue, &ss, portMAX_DELAY);
+    q.sum_sqr_SPL = sum_sqr_SPL;
+    q.sum_sqr_weighted = sum_sqr_weighted;
+    xQueueSend(samples_queue, &q, portMAX_DELAY);
   }
 }
 
@@ -228,27 +231,27 @@ void setup() {
     #endif
   #endif
 
-  samples_queue = xQueueCreate(8, sizeof(samples_sum_t));
+  samples_queue = xQueueCreate(8, sizeof(samples_queue_t));
   xTaskCreate(mic_i2s_reader_task, "Mic I2S Reader", I2S_TASK_STACK, NULL, I2S_TASK_PRI, NULL);
 
-  samples_sum_t ss;
+  samples_queue_t q;
   uint32_t Leq_cnt = 0;
-  double Leq_sum_sqr = 0;
+  IIR_ACCU_T Leq_sum_sqr = 0;
   double Leq_dB = 0;
 
   // Read sum of samaples, calculated by 'i2s_reader_task'
-  while (xQueueReceive(samples_queue, &ss, portMAX_DELAY)) {
+  while (xQueueReceive(samples_queue, &q, portMAX_DELAY)) {
 
     // Calculate dB values relative to MIC_REF_AMPL and adjust for reference dB
-    float short_SPL_dB = MIC_OFFSET_DB + MIC_REF_DB + 20 * log10(sqrt(ss.sum_sqr_SPL / SAMPLES_SHORT) / MIC_REF_AMPL);
+    double short_SPL_dB = MIC_OFFSET_DB + MIC_REF_DB + 20 * log10(sqrt(double(q.sum_sqr_SPL) / SAMPLES_SHORT) / MIC_REF_AMPL);
 
     // In case of acoustic overload, report infinty Leq value
     if (short_SPL_dB > MIC_OVERLOAD_DB) Leq_sum_sqr = INFINITY;
 
-    Leq_sum_sqr += ss.sum_sqr_weighted;
+    Leq_sum_sqr += q.sum_sqr_weighted;
     Leq_cnt += SAMPLES_SHORT;
     if (Leq_cnt >= SAMPLE_RATE * LEQ_PERIOD) {
-      Leq_dB = MIC_OFFSET_DB + MIC_REF_DB + 20 * log10(sqrt(Leq_sum_sqr / Leq_cnt) / MIC_REF_AMPL);
+      Leq_dB = MIC_OFFSET_DB + MIC_REF_DB + 20 * log10(sqrt(double(Leq_sum_sqr) / Leq_cnt) / MIC_REF_AMPL);
       Leq_sum_sqr = 0;
       Leq_cnt = 0;
       printf("%s(%ds) : %.1f\n", LEQ_UNITS, LEQ_PERIOD, Leq_dB);
@@ -264,7 +267,7 @@ void setup() {
         continue;
       }
       // The 'short' Leq line
-      float short_Leq_dB = MIC_OFFSET_DB + MIC_REF_DB + 20 * log10(sqrt(ss.sum_sqr_weighted / SAMPLES_SHORT) / MIC_REF_AMPL);
+      double short_Leq_dB = MIC_OFFSET_DB + MIC_REF_DB + 20 * log10(sqrt(double(q.sum_sqr_weighted) / SAMPLES_SHORT) / MIC_REF_AMPL);
       uint16_t len = uint16_t(((short_Leq_dB - MIC_NOISE_DB) / MIC_OVERLOAD_DB) * display.getWidth());
       display.drawHorizontalLine(0, 0, len);
       display.drawHorizontalLine(0, 1, len);

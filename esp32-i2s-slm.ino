@@ -358,7 +358,7 @@ void setup() {
   // i.e. if you want to (slightly) reduce ESP32 power consumption 
   setCpuFrequencyMhz(80); // It should run as low as 80MHz
   
-  Serial.begin(112500);
+  Serial.begin(115200);
   delay(1000); // Safety
   
   #if (USE_DISPLAY > 0)

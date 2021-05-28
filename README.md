@@ -12,6 +12,6 @@ And the microphone response after equalization should look like:
 
 Theoretically, i.e. with factory calibrated ICS-4343x, this should get you ±1dB(A) measurement within 20Hz-20KHz range.
 
-The code in this repository is mostly intended as example how you can integrate resonable noise measurement (i.e. *L*<sub>Aeq</sub>, Equivalent Continuous Sound Level) in your projects. 
+The code in this repository is mostly intended as example how you can integrate resonable noise measurement (i.e. *L*<sub>Aeq</sub>, Equivalent Continuous Sound Level) in your projects.
 
 You can find a bit more information in my [hackday.io](https://hackaday.io/project/166867-esp32-i2s-slm) project.

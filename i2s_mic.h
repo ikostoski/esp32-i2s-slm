@@ -189,8 +189,9 @@ private:
           object->m_sampleBuffer[i] = int_samples[i] >> (SAMPLE_BITS - MIC_BITS);
         }
 
-        // filter values
-        object->m_filter.filter(object->m_sampleBuffer, object->m_sampleBuffer, NR_OF_SAMPLES);
+        // filter values and apply gain setting
+        object->m_filter.applyFilters(object->m_sampleBuffer, object->m_sampleBuffer, NR_OF_SAMPLES);
+        object->m_filter.applyGain(object->m_sampleBuffer, object->m_sampleBuffer, NR_OF_SAMPLES);
 
         // Debug only. Ticks we spent filtering and summing block of I2S data
         //auto proc_ticks = xTaskGetTickCount() - start_tick;
